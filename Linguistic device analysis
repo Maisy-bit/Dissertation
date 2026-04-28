@@ -1,0 +1,64 @@
+import pandas as pd
+from openai import OpenAI
+import json
+
+openai_api_key = input(" API Key ").strip()
+client = OpenAI(api_key=openai_api_key)
+
+csv_file = "immigration_sentences.csv" #load previously extracted data
+df = pd.read_csv(csv_file)
+#definitions of linguistic device
+prompt_template = """
+Analyse the following sentence for linguistic devices:
+
+Sentence: "{sentence}"
+
+Definitions:
+1. Pronouns: A word that can function as a noun phrase used by itself and that refers to either the participants in the discourse or to someone or something mentioned elsewhere. (e.g., I, we, you, they, him, her, it, ours, us, yours, his, hers, them)
+2. Modality: an auxiliary verb that expresses necessity or possibility. English modal verbs include must, shall, will, should, would can, could, may and might.
+3. Metaphors: figurative expressions where a word or phrase is applied to an object or action to which it is not literally applicable. A figure of speech in which a word or phrase literally denoting one kind of object or idea is used in place of another to suggest a likeness or analogy between them. An expresiion that descrives a person or object by referring to something that is considered to have similar characteristics to that person or object. 
+4. Metonymy: expressions where one thing represents another closely related thing. The substitution of the name of an attribute or adjunct for that of the thing meant.  a figure of speech consisting of the use of the name of one thing for that of another of which it is an attribute or with which it is associated. The act of referring to something using a word that describes one of its qualities or features.
+5. Hedging: a way of avoiding giving a direct answer or opinion. Hedging is the use of cautious language to manage the strength of a claim. 
+
+Example:
+Sentence: "The government must protect its citizens."
+Output:
+{{
+    "pronouns": ["its"],
+    "modality": ["must"],
+    "metaphors": [],
+    "metonymy": [],
+    "hedging": []
+}}
+
+Now analyse the sentence above and return your answer in the same JSON format.
+"""
+
+def analyse_sentence(sentence): #send one sentence to AI (gpt) to analyse linguistic devices
+    prompt = prompt_template.format(sentence=sentence)
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1 mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0
+        )
+        content = response.choices[0].message.content
+        
+        return json.loads(content)
+    except Exception as e:
+        
+        return {"error": str(e), "sentence": sentence}
+
+results = [] #analyse all sentences
+for sent in df['sentence']:
+    results.append(analyse_sentence(sent))
+
+df['linguistic_analysis'] = results
+
+df_expanded = pd.json_normalize(df['linguistic_analysis'])
+df = pd.concat([df, df_expanded], axis=1)
+
+output_file = "immigration_sentences_analysis.csv" #Save in new csv
+df.to_csv(output_file, index=False)
+
+print(f"Done. Saved to '{output_file}'")
