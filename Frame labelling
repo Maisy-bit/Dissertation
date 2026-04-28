@@ -1,0 +1,76 @@
+import os
+import pandas as pd
+from openai import OpenAI
+#definitions and examples 
+FRAMES = """ 
+Frames:
+1.  Nationalistic - mobilised for the preservation of national boundaries and a culturally homogenous society, in order to uphold an exclusive national identity. Includes themes of: foreign infiltration, national idenity, loss of traditions, avoide Islamisation, avoid flows of refugees and natopnal sovereignty. 
+2.  Multicultural - favour cultural openness, exchange and the peaceful coexistence of various cultural and religious groups within a society. Includes themes of: integration through tolerance, advantages of cultural diversity, tolerance between religious groups abd European identity.
+3.  Moral Universal - refers to general moral principles and universal rights that are claimable and acceptable by everyone regardless of his or hers particular interests or cultural identity. Includes: basic civil rights, non-discrimination, humanitarian rights, rules of law, baisc political rights, democracy, participation and international solidarity, fairness, equality, discrimination of groups. Includes themes of: fairness, equality, discrimination of groups, human rights freedom of opinion, geneva convention and rules of law democracy. 
+4.  Labour and social security - includes: arguments related to fears of unemployment, decreasing wages, retrenchment of the welfare state and declining social security. Includes themes of: unemployment rates, salary dumping, poverty, welfare state and congestion in the social security system. 
+5.  Economic - arguments that put immigration in the context of economic wealth and growth. Indludes: beliefs that that an economy needs cheap labour force, or that a country's social benefits will increase as a result of immigration. Includes themes of: attract high skilled immigrants, productivity and international competition. 
+6.  Security - includes arguments related to refering to internal and external security, crime, terrorism. Includes themes of: terroism, youth criminality, internal security, political stability and organised crime. 
+7.  Pragmatic - contains references to legal, interest-based and efficiency arguments. Non-ideological due to individuals using arguments to avoid making clearly ideological sources. Includes themes of: In our interest, capacity to act, legal security, response to globalisation, reputation and legality. 
+8.  Other - does not fit into any other frame 
+Rules:
+- Assign ONE or MORE frames to each sentence if applicable.
+- Use ONLY these labels exactly:
+  Nationalistic
+  Multicultural
+  Moral Universal
+  Labour and social security
+  Economic
+  Security
+  Pragmatic
+  Other
+- Output labels as a comma-separated list (e.g., Multicultural, Pragmatic)
+- Do not invent other labels.
+
+Examples:
+- "We must protect immigrant families because that is who we are as a nation." → Nationalistic
+- "Stronger border security reduces crime and saves money." → Labour and social security
+- "Every human deserves dignity regardless of where they were born." → Moral-universal
+- "Protecting families is both our duty and saves money." → Economic, Pragmatic
+"""
+
+BATCH_SIZE = 10  #number of sentences analysed per API call
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+df = pd.read_csv("immigration_sentences.csv")#load previously extracted data 
+
+df["frame_1"] = ""
+df["frame_2"] = ""
+df["frame_3"] = ""
+
+for start in range(0, len(df), BATCH_SIZE):
+
+    items = "\n".join([f"{i+1}. {s}" for i, s in enumerate(batch["sentence"].tolist())])
+    prompt = f"""{FRAMES}
+
+Label each sentence with one or more frames if needed.
+Return a numbered list matching the sentence numbers. Use comma-separated labels.
+Sentences:
+{items}
+
+Labels:
+"""
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "You are a precise text classification assistant."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0
+    ) #call gpt-4.1 mini
+
+    labels_text = response.choices[0].message.content.strip()
+    labels_lines = [line.strip() for line in labels_text.splitlines() if line.strip()]
+
+    for i, line in enumerate(labels_lines): #assign frames 
+        split_labels = [l.strip() for l in line.split(",")]
+        for j, l in enumerate(split_labels[:3]):
+            df.at[start + i, f"frame_{j+1}"] = l
+
+df.to_csv("immigration_framed.csv", index=False) #save as csv
+print("Done. saved to '{output_file}'")
